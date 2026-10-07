@@ -6,6 +6,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 import shutil
 import os
+import uuid  # NEW
 
 from database import engine, SessionLocal
 import models, schemas
@@ -38,6 +39,7 @@ app.add_middleware(
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 app.mount("/files", StaticFiles(directory=UPLOAD_DIR), name="files")
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")  # NEW
 
 
 # ---------- DB Dependency ----------
@@ -123,7 +125,7 @@ def list_patients(
 
 
 # =====================================================
-# 🧠 IMAGE UPLOAD + AI REPORT (Protected)
+# 🧠 IMAGE UPLOAD + AI REPORT (Protected)  -- UPDATED
 # =====================================================
 
 @app.post("/upload-image/{patient_id}", response_model=schemas.ReportOut)
@@ -137,12 +139,25 @@ def upload_image(
     if not patient:
         raise HTTPException(404, "Patient not found")
 
-    file_path = os.path.join(UPLOAD_DIR, file.filename)
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in (".png", ".jpg", ".jpeg", ".webp"):
+        raise HTTPException(400, "Only PNG, JPG or WEBP images are supported")
+
+    # unique file name, forward slashes so the URL works in the browser
+    file_path = f"{UPLOAD_DIR}/{uuid.uuid4().hex}{ext}"
 
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    findings, impression = generate_radiology_report(file.filename)
+    try:
+        findings, impression = generate_radiology_report(
+            file_path, age=patient.age, gender=patient.gender
+        )
+    except Exception as e:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        print("AI error:", e)
+        raise HTTPException(502, "AI report generation failed. Please try again.")
 
     report = models.Report(
         patient_id=patient_id,
@@ -201,7 +216,7 @@ def update_final_report(
 
 
 # =====================================================
-# 🗑️ DELETE REPORT (NEW)
+# 🗑️ DELETE REPORT
 # =====================================================
 
 @app.delete("/reports/{report_id}")
@@ -232,7 +247,7 @@ def delete_report(
 
 
 # =====================================================
-# 📥 PDF DOWNLOAD (FIXED)
+# 📥 PDF DOWNLOAD
 # =====================================================
 
 @app.get("/reports/{report_id}/pdf")
