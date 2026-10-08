@@ -1,12 +1,16 @@
+import os
+import shutil
+import uuid
+
+from dotenv import load_dotenv
+from fastapi import FastAPI, UploadFile, File, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, Query
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
-import shutil
-import os
-import uuid  # NEW
+
+load_dotenv()
 
 from database import engine, SessionLocal
 import models, schemas
@@ -16,7 +20,7 @@ from services.ai_report import generate_radiology_report
 from services.pdf_report import generate_report_pdf
 
 # ---- AUTH ----
-from auth import hash_password, verify_password, create_access_token, decode_token
+from auth import hash_password, verify_password, create_access_token
 from deps import get_current_user
 
 
@@ -27,9 +31,13 @@ models.Base.metadata.create_all(bind=engine)
 # ---------- App ----------
 app = FastAPI(title="Medical AI Assistant API")
 
+# Allowed frontend address(es). On your laptop this is http://localhost:3000.
+# When deployed, set FRONTEND_URL in your host's environment variables.
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000").rstrip("/")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[FRONTEND_URL, "http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -39,7 +47,7 @@ app.add_middleware(
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 app.mount("/files", StaticFiles(directory=UPLOAD_DIR), name="files")
-app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")  # NEW
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 
 # ---------- DB Dependency ----------
@@ -125,7 +133,7 @@ def list_patients(
 
 
 # =====================================================
-# 🧠 IMAGE UPLOAD + AI REPORT (Protected)  -- UPDATED
+# 🧠 IMAGE UPLOAD + AI REPORT (Protected)
 # =====================================================
 
 @app.post("/upload-image/{patient_id}", response_model=schemas.ReportOut)
@@ -185,9 +193,12 @@ def reports_by_patient(
     db: Session = Depends(get_db),
     user=Depends(get_current_user)
 ):
-    return db.query(models.Report).filter_by(
-        patient_id=patient_id
-    ).all()
+    return (
+        db.query(models.Report)
+        .filter_by(patient_id=patient_id)
+        .order_by(models.Report.id.desc())
+        .all()
+    )
 
 
 # =====================================================
@@ -216,7 +227,7 @@ def update_final_report(
 
 
 # =====================================================
-# 🗑️ DELETE REPORT
+# 🗑️ DELETE REPORT (Doctor Only)
 # =====================================================
 
 @app.delete("/reports/{report_id}")
@@ -247,21 +258,15 @@ def delete_report(
 
 
 # =====================================================
-# 📥 PDF DOWNLOAD
+# 📥 PDF DOWNLOAD (token sent in the Authorization header)
 # =====================================================
 
 @app.get("/reports/{report_id}/pdf")
 def download_pdf(
     report_id: int,
-    token: str = Query(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user)
 ):
-    payload = decode_token(token)
-    user_id = payload.get("user_id")
-
-    if not user_id:
-        raise HTTPException(401, "Invalid token")
-
     report = db.get(models.Report, report_id)
     if not report:
         raise HTTPException(404, "Report not found")

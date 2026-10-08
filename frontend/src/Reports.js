@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from "react";
 import API from "./api";
 
+const BASE_URL = process.env.REACT_APP_API_URL || "http://127.0.0.1:8020";
+
 export default function Reports({ patientId, refreshKey }) {
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -25,7 +27,9 @@ export default function Reports({ patientId, refreshKey }) {
       setEditMap(map);
     } catch (err) {
       console.error(err);
-      alert("Failed to load reports");
+      if (err.response?.status !== 401) {
+        alert("Failed to load reports");
+      }
     } finally {
       setLoading(false);
     }
@@ -70,15 +74,30 @@ export default function Reports({ patientId, refreshKey }) {
   };
 
   // -----------------------
-  // Download PDF
+  // Download PDF (token sent in the header, not in the URL)
   // -----------------------
-  const downloadPDF = (id) => {
-    const token = localStorage.getItem("token");
+  const downloadPDF = async (id) => {
+    try {
+      const res = await API.get(`/reports/${id}/pdf`, {
+        responseType: "blob",
+      });
 
-    window.open(
-      `http://127.0.0.1:8020/reports/${id}/pdf?token=${token}`,
-      "_blank"
-    );
+      const url = window.URL.createObjectURL(
+        new Blob([res.data], { type: "application/pdf" })
+      );
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `report_${id}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+      if (err.response?.status !== 401) {
+        alert("PDF download failed ❌");
+      }
+    }
   };
 
   // -----------------------
@@ -127,7 +146,7 @@ export default function Reports({ patientId, refreshKey }) {
             {r.image_path && (
               <div className="lg:col-span-1">
                 <img
-                  src={`http://127.0.0.1:8020/${r.image_path}`}
+                  src={`${BASE_URL}/${r.image_path}`}
                   alt={`Scan for report ${r.id}`}
                   className="w-full rounded-lg border border-slate-200 bg-black object-contain max-h-80"
                 />
@@ -204,12 +223,14 @@ export default function Reports({ patientId, refreshKey }) {
                   Download PDF
                 </button>
 
-                <button
-                  onClick={() => deleteReport(r.id)}
-                  className="bg-white hover:bg-red-50 text-red-600 border border-red-200 rounded-lg px-4 py-2 text-sm font-medium transition"
-                >
-                  Delete
-                </button>
+                {role === "doctor" && (
+                  <button
+                    onClick={() => deleteReport(r.id)}
+                    className="bg-white hover:bg-red-50 text-red-600 border border-red-200 rounded-lg px-4 py-2 text-sm font-medium transition"
+                  >
+                    Delete
+                  </button>
+                )}
               </div>
             </div>
           </div>
