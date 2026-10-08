@@ -4,7 +4,7 @@ An AI-assisted radiology reporting tool. A doctor uploads a scan, a vision LLM d
 
 > **Demo project, not a medical device.** AI output can be incomplete or wrong. Reports are drafts and must be reviewed by a qualified physician. Use only fake patient data and public sample images.
 
-**Live demo:** `ADD_YOUR_VERCEL_LINK_HERE`
+**Live demo:** https://medical-ai-assistant-ashen.vercel.app/
 *(The backend runs on a free tier, so the first request after a quiet period can take about a minute to wake up.)*
 
 ---
