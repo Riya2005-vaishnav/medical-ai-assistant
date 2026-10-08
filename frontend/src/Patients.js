@@ -17,13 +17,19 @@ export default function Patients() {
   // -------------------------
   // Load Patients
   // -------------------------
-  const load = async () => {
+  
+    const load = async () => {
     try {
       const res = await API.get("/patients");
       setPatients(res.data);
     } catch (err) {
       console.error(err);
-      alert("Failed to load patients");
+      if (!err.response) {
+        alert("Cannot reach the server. Is the backend running?");
+      } else if (err.response.status !== 401) {
+        alert("Failed to load patients");
+      }
+      // On 401, api.js logs you out and shows the login page
     }
   };
 
